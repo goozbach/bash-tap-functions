@@ -1,0 +1,8 @@
+1..2
+# A diagnostic message
+# Returned: 0
+ok 1 - test 1
+not ok 2 - test 2
+#     Failed test ()
+# ok() passed, and shouldn't
+# Looks like you failed 1 tests of 2.
