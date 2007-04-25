@@ -2,6 +2,8 @@ import java.io.* ;
 
 
 public class JTap {
+	final private String version = "1.0" ;
+	
 	private boolean plan_set = false ;
 	private boolean no_plan = false ;
 	private boolean skip_all = false ;
