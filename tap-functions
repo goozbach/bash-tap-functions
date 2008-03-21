@@ -1,6 +1,6 @@
 #!/bin/bash 
 
-version='1.0'
+_version='1.0'
 	
 _plan_set=0
 _no_plan=0
@@ -12,12 +12,13 @@ _failed_tests=0
 _todo=''
 
 
+# Don't allow uninitialized variables
 set -u
 trap _exit EXIT
 
-	
+
 plan_no_plan(){
-	[ $_plan_set != 0 ] && "You tried to plan twice!"
+	(( $_plan_set != 0 )) && "You tried to plan twice!"
 
 	_plan_set=1
 	_no_plan=1
@@ -27,9 +28,9 @@ plan_no_plan(){
 
 
 plan_skip_all(){
-	local reason=$1
+	local reason=${1:-''}
 
-	[ $_plan_set != 0 ] && _die "You tried to plan twice!"
+	(( $_plan_set != 0 )) && _die "You tried to plan twice!"
 
 	_print_plan 0 "Skip $reason"
 
@@ -44,8 +45,8 @@ plan_skip_all(){
 plan_tests(){
 	local tests=$1
 
-	[ $_plan_set != 0 ] && _die "You tried to plan twice!"
-	[ $tests == 0 ] && _die "You said to run 0 tests!  You've got to run something."
+	(( $_plan_set != 0 )) && _die "You tried to plan twice!"
+	(( $tests == 0 )) && _die "You said to run 0 tests!  You've got to run something."
 
 	_print_plan $tests
 	_expected_tests=$tests
@@ -60,20 +61,20 @@ _print_plan(){
 	local directive=${2:-''}
 
 	echo -n "1..$tests"
-	[ -n "$directive" ] && echo -n " # $directive"
+	[[ -n "$directive" ]] && echo -n " # $directive"
 	echo
 }
 
 
 pass(){
 	local name=$1
-	ok 0 $name
+	ok 0 "$name"
 }
 
 
 fail(){
 	local name=$1
-	ok 1 $name
+	ok 1 "$name"
 }
 
 
@@ -81,23 +82,22 @@ fail(){
 # prints the tests result.
 ok(){
 	local result=$1
-	local name=$2 
+	local name=${2:-''} 
 
-	[ $_plan_set == 0 ] && _die "You tried to run a test without a plan!  Gotta have a plan."
+	(( $_plan_set == 0 )) && _die "You tried to run a test without a plan!  Gotta have a plan."
 
-	_executed_tests=$(($_executed_tests + 1))
+	_executed_tests=$(( $_executed_tests + 1 ))
 
-	#if (name != null) {
-	#	if (name.matches("[\\d\\s]+")){
-	#		diag("    You named your test '" + name 
-	#			+ "'.  You shouldn't use numbers for your test names.") ;
-	#		diag("    Very confusing.") ;
-	#	}
-	#}
+	if [[ -n "$name" ]] ; then
+		if _matches "$name" "^[0-9]+$" ; then
+			diag "    You named your test '$name'.  You shouldn't use numbers for your test names."
+			diag "    Very confusing."
+		fi
+	fi
 
-	if [ "$result" != 0 ] ; then
+	if (( $result != 0 )) ; then
 		echo -n "not "
-		_failed_tests=$(($_failed_tests + 1))
+		_failed_tests=$(( $_failed_tests + 1 ))
 	fi
 	echo -n "ok $_executed_tests"
 
@@ -156,7 +156,7 @@ _equals(){
 	local result=$1
 	local expected=$2
 
-	if [ "$result" = "$expected" ] ; then
+	if [[ "$result" == "$expected" ]] ; then
 		return 0
 	else 
 		return 1
@@ -168,7 +168,7 @@ _matches(){
 	local result=$1
 	local pattern=$2
 
-	if [ -z "$result" -o -z "$pattern" ] ; then
+	if [[ -z "$result" || -z "$pattern" ]] ; then
 		return 1
 	elif [[ "$result" =~ "$pattern" ]] ; then
 		return 0
@@ -192,11 +192,11 @@ is(){
 	local expected=$2
 	local name=${3:-''}
 
-	_equals $result $expected
-	[ $? = 0 ]
-	ok $? name
+	_equals "$result" "$expected"
+	(( $? == 0 ))
+	ok $? "$name"
 	local r=$?
-	[ $r != 0 ] && _is_diag $result $expected
+	(( $r != 0 )) && _is_diag "$result" "$expected"
 	return $r 
 }
 
@@ -206,11 +206,11 @@ isnt(){
 	local expected=$2
 	local name=${3:-''}
 
-	_equals $result $expected
-	[ $? = 0 ]
-	ok $? name
+	_equals "$result" "$expected"
+	(( $? != 0 ))
+	ok $? "$name"
 	local r=$?
-	[ $r != 0 ] && _is_diag $result $expected
+	(( $r != 0 )) && _is_diag "$result" "$expected"
 	return $r 
 }
 
@@ -220,11 +220,11 @@ like(){
 	local pattern=$2
 	local name=${3:-''}
 
-	_matches $result $pattern
-	[ $? = 0 ]
-	ok $? name
+	_matches "$result" "$pattern"
+	(( $? == 0 ))
+	ok $? "$name"
 	local r=$?
-	[ $r != 0 ] && diag "    '$result' doesn't match '$pattern'"
+	(( $r != 0 )) && diag "    '$result' doesn't match '$pattern'"
 	return $r
 }
 
@@ -234,11 +234,11 @@ unlike(){
 	local pattern=$2
 	local name=${3:-''}
 
-	_matches $result $pattern
-	[ $? != 0 ]
-	ok $? name
+	_matches "$result" "$pattern"
+	(( $? != 0 ))
+	ok $? "$name"
 	local r=$?
-	[ "$r" != 0 ] && diag "    '$result' matches '$pattern'"
+	(( "$r" != 0 )) && diag "    '$result' matches '$pattern'"
 	return $r
 }
 
@@ -269,9 +269,9 @@ todo_end(){
 
 # TODO: Support multiline messages
 diag(){
-	local msg=$1
+	local msg=${1:-''}
 
-	if [ -n "$msg" ] ; then
+	if [[ -n "$msg" ]] ; then
 		echo "# $msg"
 	fi
 	
@@ -280,9 +280,9 @@ diag(){
 
 	
 _die(){
-	local reason=$1
+	local reason=${1:-'<unspecified error>'}
 
-	echo $reason >&2
+	echo "$reason" >&2
 	_test_died=1
 	_exit 255
 }
@@ -299,29 +299,29 @@ BAIL_OUT(){
 _cleanup(){
 	local rc=0
 
-	if [ $_plan_set = 0 ] ; then
+	if (( $_plan_set == 0 )) ; then
 		diag "Looks like your test died before it could output anything."
 		return $rc
 	fi
 
-	if [ $_test_died != 0 ] ; then
+	if (( $_test_died != 0 )) ; then
 		diag "Looks like your test died just after $_executed_tests."
 		return $rc
 	fi
 
-	if [ $_skip_all = 0 -a $_no_plan != 0 ] ; then
+	if (( $_skip_all == 0 && $_no_plan != 0 )) ; then
 		_print_plan $_executed_tests
 	fi
 
 	local s=
-	if [ $_no_plan = 0 -a $_expected_tests -lt $_executed_tests ] ; then
+	if (( $_no_plan == 0 && $_expected_tests < $_executed_tests )) ; then
 		s= ; (( $_expected_tests > 1 )) && s=s
 		local extra=$(($_executed_tests - $_expected_tests))
 		diag "Looks like you planned $_expected_tests test$s but ran $extra extra."
 		rc=-1 ;
 	fi
 
-	if [ $_no_plan = 0 -a $_expected_tests -gt $_executed_tests ] ; then
+	if (( $_no_plan == 0 && $_expected_tests > $_executed_tests )) ; then
 		s= ; (( $_expected_tests > 1 )) && s=s
 		diag "Looks like you planned $_expected_tests test$s but only ran $_executed_tests."
 	fi
@@ -336,28 +336,28 @@ _cleanup(){
 
 
 _exit_status(){
-	if [ $_no_plan != 0 -a $_plan_set = 0 ] ; then
+	if (( $_no_plan != 0 && $_plan_set == 0 )) ; then
 		return $_failed_tests
 	fi
 
 	if (( $_expected_tests < $_executed_tests )) ; then
-		return $(($_executed_tests - $_expected_tests))
+		return $(( $_executed_tests - $_expected_tests  ))
 	fi
 
-	return $(($_failed_tests + ($_expected_tests - $_executed_tests)))
+	return $(( $_failed_tests + ($_expected_tests - $_executed_tests )))
 }
 
 
 _exit(){
 	local rc=${1:-''}
-	if [ -z "$rc" ] ; then
+	if [[ -z "$rc" ]] ; then
 		_exit_status
 		rc=$?
 	fi
 
 	_cleanup
 	local alt_rc=$?
-	[ $alt_rc != 0 ] && rc=$alt_rc
+	(( $alt_rc != 0 )) && rc=$alt_rc
 	trap - EXIT
 	exit $rc
 }
