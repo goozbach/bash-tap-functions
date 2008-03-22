@@ -9,7 +9,7 @@ _test_died=0
 _expected_tests=0 
 _executed_tests=0 
 _failed_tests=0
-_todo=''
+TODO=''
 
 
 # Don't allow uninitialized variables
@@ -23,7 +23,7 @@ plan_no_plan(){
 	_plan_set=1
 	_no_plan=1
 
-	return 1
+	return 0
 }
 
 
@@ -101,28 +101,24 @@ ok(){
 	fi
 	echo -n "ok $_executed_tests"
 
-	#if (name != null) {
-	#	out.print(" - ") ;
-	#	out.print(name.replaceAll("#", "\\\\#")) ;
-	#}
+	if [[ -n "$name" ]] ; then
+		local ename=${name//\#/\\#}
+		echo -n " - $ename"
+	fi
 
-	#if (_todo != null){
-	#	out.print(" # TODO " + +todo) ;
-	#	if (! result){
-	#		failed_tests-- ;
-	#	}
-	#}
+	if [[ -n "$TODO" ]] ; then
+		echo -n " # TODO $TODO" ;
+		if (( $result != 0 )) ; then
+			_failed_tests=$(( $_failed_tests - 1 ))
+		fi
+	fi
 
 	echo
-	#if (! result){
-	#	Throwable t = new Throwable() ; 
-	#	StackTraceElement stack[] = t.getStackTrace() ;
-	#	String file = null ;
-	#	String clas = null ;
-	#	String func = null ;
-	#	int line = 0 ;
+	if (( $result != 0 )) ; then
+		local file=
+		local func=
+		local line=
 
-	#	try {
 	#		for (int i = 0 ; i < stack.length ; i++){
 	#			Class c = Class.forName(stack[i].getClassName()) ;
 	#			if (! JTap.class.isAssignableFrom(c)){
@@ -134,19 +130,16 @@ ok(){
 	#				break ;
 	#			}
 	#		}
-	#	}
-	#	catch (Exception e){
-	#		e.printStackTrace() ;
-	#	}
 
-	#	if (name != null){		
-	#		diag("  Failed " + (_todo == null ? "" : "(TODO) ") + "test '" + name + "'") ;
-	#		diag("  in " + file + ":" + func + "() at line " + line + ".") ;
-	#	}
-	#	else {
-	#		diag("  Failed " + (_todo == null ? "" : "(TODO) ") + "test in " + file + ":" + func + "() at line " + line + ".") ;
-	#	}
-	#}
+		local t=
+		[[ -n "$TODO" ]] && t="(TODO) "
+		if [[ -n "$name" ]] ; then
+			diag "  Failed ${t}test '$name'"
+			diag "  in $file:$func() at line $line."
+		else
+			diag "  Failed ${t}test in $file:$func() at line $line."
+		fi
+	fi
 
 	return $result
 }
@@ -255,18 +248,6 @@ skip(){
 }
 
 
-todo_start(){
-	local reason=$1
-
-	_todo=$reason
-}
-
-
-todo_end(){
-	_todo=
-}
-
-
 # TODO: Support multiline messages
 diag(){
 	local msg=${1:-''}
@@ -336,7 +317,7 @@ _cleanup(){
 
 
 _exit_status(){
-	if (( $_no_plan != 0 && $_plan_set == 0 )) ; then
+	if (( $_no_plan != 0 || $_plan_set == 0 )) ; then
 		return $_failed_tests
 	fi
 
