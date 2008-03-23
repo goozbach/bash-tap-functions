@@ -115,10 +115,14 @@ ok(){
 
 	echo
 	if (( $result != 0 )) ; then
-		local file=
-		local func=
-		local line=
+		local file='tap-functions'
+		local func='?'
+		local line='?'
 
+		while [[ "$file" = "tap-functions" ]] ; do
+			caller $i
+			i=$(( $i + 1 ))
+			
 	#		for (int i = 0 ; i < stack.length ; i++){
 	#			Class c = Class.forName(stack[i].getClassName()) ;
 	#			if (! JTap.class.isAssignableFrom(c)){
@@ -129,7 +133,7 @@ ok(){
 	#				line = stack[i].getLineNumber() ;
 	#				break ;
 	#			}
-	#		}
+		done
 
 		local t=
 		[[ -n "$TODO" ]] && t="(TODO) "
@@ -241,7 +245,7 @@ skip(){
 	local n=${2:-1}
 
 	local i=
-	for (( i=0 ; i<$n ; i++ )) ; do
+	for (( $i=0 ; $i<$n ; $i++ )) ; do
 		_executed_tests=$(($_executed_tests + 1))
 		echo "ok $_executed_tests # skip $reason" 
 	done
