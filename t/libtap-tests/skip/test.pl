@@ -21,7 +21,7 @@ SKIP: {
 
 	$side_effect++;
 
-	$rc = ok($side_effect == 1, '$side_effect checked out');
+	$rc = ok($side_effect == 1, 'side_effect checked out');
 }
 
 diag("Returned: $rc");
@@ -32,7 +32,7 @@ SKIP: {
 
 	$side_effect++;
 
-	$rc = ok($side_effect == 1, '$side_effect checked out');
+	$rc = ok($side_effect == 1, 'side_effect checked out');
 	diag("Returned: $rc");
 }
 

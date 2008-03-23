@@ -1,5 +1,6 @@
 #!/bin/bash 
 
+
 _version='1.0'
 	
 _plan_set=0
@@ -9,7 +10,50 @@ _test_died=0
 _expected_tests=0 
 _executed_tests=0 
 _failed_tests=0
-TODO=''
+TODO=
+
+
+usage(){
+	cat <<'USAGE'
+tap-functions: A TAP producing BASH library
+
+PLAN:
+  plan_no_plan
+  plan_skip_all [REASON]
+  plan_tests NB_TESTS
+
+TEST:
+  ok RESULT [NAME]
+  is RESULT EXPECTED [NAME]
+  isnt RESULT EXPECTED [NAME]
+  like RESULT PATTERN [NAME]
+  unlike RESULT PATTERN [NAME]
+  pass [NAME]
+  fail [NAME]
+
+OTHER:
+  diag [MSG]
+
+SKIP:
+  skip [REASON] [NB_TESTS=1]
+
+  Use a subshell to contain skip mode:
+    (
+      skip "feature not present" 2
+      ok $a "a"
+      ok $b "b"
+    )
+
+TODO:
+  Specify TODO mode by setting $TODO:
+    $TODO="not implemented yet"
+    ok $result $expleted "some not implemented test"
+    $TODO=
+
+USAGE
+	exit
+}
+[ "$1" == '-h' -o "$1" == '--help' ] && usage
 
 
 # Don't allow uninitialized variables
@@ -18,7 +62,7 @@ trap _exit EXIT
 
 
 plan_no_plan(){
-	(( $_plan_set != 0 )) && "You tried to plan twice!"
+	(( _plan_set != 0 )) && "You tried to plan twice!"
 
 	_plan_set=1
 	_no_plan=1
@@ -30,7 +74,7 @@ plan_no_plan(){
 plan_skip_all(){
 	local reason=${1:-''}
 
-	(( $_plan_set != 0 )) && _die "You tried to plan twice!"
+	(( _plan_set != 0 )) && _die "You tried to plan twice!"
 
 	_print_plan 0 "Skip $reason"
 
@@ -45,8 +89,8 @@ plan_skip_all(){
 plan_tests(){
 	local tests=$1
 
-	(( $_plan_set != 0 )) && _die "You tried to plan twice!"
-	(( $tests == 0 )) && _die "You said to run 0 tests!  You've got to run something."
+	(( _plan_set != 0 )) && _die "You tried to plan twice!"
+	(( tests == 0 )) && _die "You said to run 0 tests!  You've got to run something."
 
 	_print_plan $tests
 	_expected_tests=$tests
@@ -84,7 +128,7 @@ ok(){
 	local result=$1
 	local name=${2:-''} 
 
-	(( $_plan_set == 0 )) && _die "You tried to run a test without a plan!  Gotta have a plan."
+	(( _plan_set == 0 )) && _die "You tried to run a test without a plan!  Gotta have a plan."
 
 	_executed_tests=$(( $_executed_tests + 1 ))
 
@@ -97,7 +141,7 @@ ok(){
 
 	if (( $result != 0 )) ; then
 		echo -n "not "
-		_failed_tests=$(( $_failed_tests + 1 ))
+		_failed_tests=$(( _failed_tests + 1 ))
 	fi
 	echo -n "ok $_executed_tests"
 
@@ -109,43 +153,49 @@ ok(){
 	if [[ -n "$TODO" ]] ; then
 		echo -n " # TODO $TODO" ;
 		if (( $result != 0 )) ; then
-			_failed_tests=$(( $_failed_tests - 1 ))
+			_failed_tests=$(( _failed_tests - 1 ))
 		fi
 	fi
 
 	echo
 	if (( $result != 0 )) ; then
 		local file='tap-functions'
-		local func='?'
-		local line='?'
+		local func=
+		local line=
 
-		while [[ "$file" = "tap-functions" ]] ; do
-			caller $i
+		local i=0
+		local bt=$(caller $i)
+		while [[ "$bt" =~ "tap-functions$" ]] ; do
 			i=$(( $i + 1 ))
-			
-	#		for (int i = 0 ; i < stack.length ; i++){
-	#			Class c = Class.forName(stack[i].getClassName()) ;
-	#			if (! JTap.class.isAssignableFrom(c)){
-	#				// We are outside a JTap object, so this is probably the callpoint
-	#				file = stack[i].getFileName() ;
-	#				clas = c.getName() ;
-	#				func = stack[i].getMethodName() ;
-	#				line = stack[i].getLineNumber() ;
-	#				break ;
-	#			}
+			bt=$(caller $i)
 		done
-
+		local backtrace=
+		eval $(caller $i | (read line func file ; echo "backtrace=\"$file:$func() at line $line.\""))
+			
 		local t=
 		[[ -n "$TODO" ]] && t="(TODO) "
+
 		if [[ -n "$name" ]] ; then
 			diag "  Failed ${t}test '$name'"
-			diag "  in $file:$func() at line $line."
+			diag "  in $backtrace"
 		else
-			diag "  Failed ${t}test in $file:$func() at line $line."
+			diag "  Failed ${t}test in $backtrace"
 		fi
 	fi
 
 	return $result
+}
+
+
+okx(){
+	local command="$@"
+
+	local line=
+	diag "Output of '$command':"
+	$command | while read line ; do
+		diag "$line"
+	done
+	ok ${PIPESTATUS[0]} "$command"
 }
 
 
@@ -193,7 +243,7 @@ is(){
 	(( $? == 0 ))
 	ok $? "$name"
 	local r=$?
-	(( $r != 0 )) && _is_diag "$result" "$expected"
+	(( r != 0 )) && _is_diag "$result" "$expected"
 	return $r 
 }
 
@@ -207,7 +257,7 @@ isnt(){
 	(( $? != 0 ))
 	ok $? "$name"
 	local r=$?
-	(( $r != 0 )) && _is_diag "$result" "$expected"
+	(( r != 0 )) && _is_diag "$result" "$expected"
 	return $r 
 }
 
@@ -221,7 +271,7 @@ like(){
 	(( $? == 0 ))
 	ok $? "$name"
 	local r=$?
-	(( $r != 0 )) && diag "    '$result' doesn't match '$pattern'"
+	(( r != 0 )) && diag "    '$result' doesn't match '$pattern'"
 	return $r
 }
 
@@ -235,7 +285,7 @@ unlike(){
 	(( $? != 0 ))
 	ok $? "$name"
 	local r=$?
-	(( "$r" != 0 )) && diag "    '$result' matches '$pattern'"
+	(( r != 0 )) && diag "    '$result' matches '$pattern'"
 	return $r
 }
 
@@ -245,14 +295,14 @@ skip(){
 	local n=${2:-1}
 
 	local i=
-	for (( $i=0 ; $i<$n ; $i++ )) ; do
-		_executed_tests=$(($_executed_tests + 1))
-		echo "ok $_executed_tests # skip $reason" 
+	for (( i=0 ; i<$n ; i++ )) ; do
+		_executed_tests=$(( _executed_tests + 1 ))
+		echo "ok $_executed_tests # skip: $reason" 
 	done
+	exit
 }
 
 
-# TODO: Support multiline messages
 diag(){
 	local msg=${1:-''}
 
@@ -284,35 +334,35 @@ BAIL_OUT(){
 _cleanup(){
 	local rc=0
 
-	if (( $_plan_set == 0 )) ; then
+	if (( _plan_set == 0 )) ; then
 		diag "Looks like your test died before it could output anything."
 		return $rc
 	fi
 
-	if (( $_test_died != 0 )) ; then
+	if (( _test_died != 0 )) ; then
 		diag "Looks like your test died just after $_executed_tests."
 		return $rc
 	fi
 
-	if (( $_skip_all == 0 && $_no_plan != 0 )) ; then
+	if (( _skip_all == 0 && _no_plan != 0 )) ; then
 		_print_plan $_executed_tests
 	fi
 
 	local s=
-	if (( $_no_plan == 0 && $_expected_tests < $_executed_tests )) ; then
-		s= ; (( $_expected_tests > 1 )) && s=s
-		local extra=$(($_executed_tests - $_expected_tests))
+	if (( _no_plan == 0 && _expected_tests < _executed_tests )) ; then
+		s= ; (( _expected_tests > 1 )) && s=s
+		local extra=$(( _executed_tests - _expected_tests ))
 		diag "Looks like you planned $_expected_tests test$s but ran $extra extra."
 		rc=-1 ;
 	fi
 
-	if (( $_no_plan == 0 && $_expected_tests > $_executed_tests )) ; then
-		s= ; (( $_expected_tests > 1 )) && s=s
+	if (( _no_plan == 0 && _expected_tests > _executed_tests )) ; then
+		s= ; (( _expected_tests > 1 )) && s=s
 		diag "Looks like you planned $_expected_tests test$s but only ran $_executed_tests."
 	fi
 
-	if (( $_failed_tests > 0 )) ; then
-		s= ; (( $_failed_tests > 1 )) && s=s
+	if (( _failed_tests > 0 )) ; then
+		s= ; (( _failed_tests > 1 )) && s=s
 		diag "Looks like you failed $_failed_tests test$s of $_executed_tests."
 	fi
 
@@ -321,15 +371,15 @@ _cleanup(){
 
 
 _exit_status(){
-	if (( $_no_plan != 0 || $_plan_set == 0 )) ; then
+	if (( _no_plan != 0 || _plan_set == 0 )) ; then
 		return $_failed_tests
 	fi
 
-	if (( $_expected_tests < $_executed_tests )) ; then
-		return $(( $_executed_tests - $_expected_tests  ))
+	if (( _expected_tests < _executed_tests )) ; then
+		return $(( _executed_tests - _expected_tests  ))
 	fi
 
-	return $(( $_failed_tests + ($_expected_tests - $_executed_tests )))
+	return $(( _failed_tests + ( _expected_tests - _executed_tests )))
 }
 
 
@@ -342,7 +392,7 @@ _exit(){
 
 	_cleanup
 	local alt_rc=$?
-	(( $alt_rc != 0 )) && rc=$alt_rc
+	(( alt_rc != 0 )) && rc=$alt_rc
 	trap - EXIT
 	exit $rc
 }

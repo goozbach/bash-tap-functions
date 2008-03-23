@@ -17,7 +17,10 @@ foreach my $t (@test_scripts){
 	my $perl_output = `$^X $t 2>&1` ;
 	$perl_output = fix_diags($perl_output) . "RC: $?\n" ;
 
-	my $java_output = `$^X -I. -Mt::libtap_setup $t 2>&1` ;
+	# my $java_output = `$^X -I. -Mt::libtap_java_setup $t 2>&1` ;
+	# $java_output = fix_diags($java_output) . "RC: $?\n" ;
+
+	my $java_output = `$^X -I. -Mt::libtap_bash_setup $t 2>&1` ;
 	$java_output = fix_diags($java_output) . "RC: $?\n" ;
 
 	is($java_output, $perl_output, $t) ;
@@ -40,7 +43,7 @@ sub fix_diags {
 	my $output = shift ;
 
 	$output =~ s/^#   (at|in) .*$//mg ;
-	$output =~ s/\s*at .* line .*$//mg ;
+	$output =~ s/\s*(at|in) .*$//mg ;
 	$output =~ s/\s*!.*$//mg ;
 	$output =~ s/\n+/\n/g ;
 
