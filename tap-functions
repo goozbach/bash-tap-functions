@@ -24,6 +24,7 @@ PLAN:
 
 TEST:
   ok RESULT [NAME]
+  okx COMMAND
   is RESULT EXPECTED [NAME]
   isnt RESULT EXPECTED [NAME]
   like RESULT PATTERN [NAME]
@@ -32,7 +33,7 @@ TEST:
   fail [NAME]
 
 OTHER:
-  diag [MSG]
+  diag MSG
 
 SKIP:
   skip [REASON] [NB_TESTS=1]
@@ -87,7 +88,7 @@ plan_skip_all(){
 
 
 plan_tests(){
-	local tests=$1
+	local tests=${1:?}
 
 	(( _plan_set != 0 )) && _die "You tried to plan twice!"
 	(( tests == 0 )) && _die "You said to run 0 tests!  You've got to run something."
@@ -101,7 +102,7 @@ plan_tests(){
 
 
 _print_plan(){
-	local tests=$1
+	local tests=${1:?}
 	local directive=${2:-''}
 
 	echo -n "1..$tests"
@@ -125,8 +126,8 @@ fail(){
 # This is the workhorse method that actually
 # prints the tests result.
 ok(){
-	local result=$1
-	local name=${2:-''} 
+	local result=${1:?}
+	local name=${2:-''}
 
 	(( _plan_set == 0 )) && _die "You tried to run a test without a plan!  Gotta have a plan."
 
@@ -139,7 +140,7 @@ ok(){
 		fi
 	fi
 
-	if (( $result != 0 )) ; then
+	if (( result != 0 )) ; then
 		echo -n "not "
 		_failed_tests=$(( _failed_tests + 1 ))
 	fi
@@ -152,13 +153,13 @@ ok(){
 
 	if [[ -n "$TODO" ]] ; then
 		echo -n " # TODO $TODO" ;
-		if (( $result != 0 )) ; then
+		if (( result != 0 )) ; then
 			_failed_tests=$(( _failed_tests - 1 ))
 		fi
 	fi
 
 	echo
-	if (( $result != 0 )) ; then
+	if (( result != 0 )) ; then
 		local file='tap-functions'
 		local func=
 		local line=
@@ -200,8 +201,8 @@ okx(){
 
 
 _equals(){
-	local result=$1
-	local expected=$2
+	local result=${1:?}
+	local expected=${2:?}
 
 	if [[ "$result" == "$expected" ]] ; then
 		return 0
@@ -212,8 +213,8 @@ _equals(){
 
 
 _matches(){
-	local result=$1
-	local pattern=$2
+	local result=${1:?}
+	local pattern=${2:?}
 
 	if [[ -z "$result" || -z "$pattern" ]] ; then
 		return 1
@@ -226,8 +227,8 @@ _matches(){
 
 
 _is_diag(){
-	local result=$1
-	local expected=$2
+	local result=${1:?}
+	local expected=${2:?}
 
 	diag "         got: '$result'" 
 	diag "    expected: '$expected'"
@@ -235,8 +236,8 @@ _is_diag(){
 
 
 is(){
-	local result=$1
-	local expected=$2
+	local result=${1:?}
+	local expected=${2:?}
 	local name=${3:-''}
 
 	_equals "$result" "$expected"
@@ -249,8 +250,8 @@ is(){
 
 
 isnt(){
-	local result=$1
-	local expected=$2
+	local result=${1:?}
+	local expected=${2:?}
 	local name=${3:-''}
 
 	_equals "$result" "$expected"
@@ -263,8 +264,8 @@ isnt(){
 
 
 like(){
-	local result=$1
-	local pattern=$2
+	local result=${1:?}
+	local pattern=${2:?}
 	local name=${3:-''}
 
 	_matches "$result" "$pattern"
@@ -277,8 +278,8 @@ like(){
 
 
 unlike(){
-	local result=$1
-	local pattern=$2
+	local result=${1:?}
+	local pattern=${2:?}
 	local name=${3:-''}
 
 	_matches "$result" "$pattern"
@@ -291,7 +292,7 @@ unlike(){
 
 
 skip(){
-	local reason=$1
+	local reason=${1:-''}
 	local n=${2:-1}
 
 	local i=
@@ -304,7 +305,7 @@ skip(){
 
 
 diag(){
-	local msg=${1:-''}
+	local msg=${1:?}
 
 	if [[ -n "$msg" ]] ; then
 		echo "# $msg"
@@ -324,7 +325,7 @@ _die(){
 
 
 BAIL_OUT(){
-	local reason=$1
+	local reason=${1:-''}
 
 	echo "Bail out! $reason" >&2
 	_exit 255
