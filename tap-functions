@@ -72,7 +72,7 @@ EXAMPLE:
     okx ls /root
   }
 
-  TODO="some day i'll have root access"
+  TODO="figure out how to become root..."
   okx [ "$HOME" == "/root" ]
   unset TODO
 
