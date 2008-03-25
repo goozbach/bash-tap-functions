@@ -15,7 +15,7 @@ TODO=
 
 usage(){
 	cat <<'USAGE'
-tap-functions: A TAP producing BASH library
+tap-functions: A TAP-producing BASH library
 
 PLAN:
   plan_no_plan
@@ -45,7 +45,7 @@ SKIP:
 
 TODO:
   Specify TODO mode by setting $TODO:
-    $TODO="not implemented yet"
+    TODO="not implemented yet"
     ok $result $expected "some not implemented test"
     unset TODO
 
@@ -75,17 +75,26 @@ EXAMPLE:
   TODO="figure out how to become root..."
   okx [ "$HOME" == "/root" ]
   unset TODO
-
-
 USAGE
 	exit
 }
-[ "$1" == '-h' -o "$1" == '--help' ] && usage
 
+opt=
+set_u=
+while getopts ":sx" opt ; do
+	case $_opt in
+        u) set_u=1 ;;
+        *) usage ;;
+    esac
+done
+shift $(( OPTIND - 1 ))
+# Don't allow uninitialized variables if requested
+[[ -n "$set_u" ]] && set -u
+unset opt set_u
 
-# Don't allow uninitialized variables
-set -u
+# Used to call _cleanup on shell exit
 trap _exit EXIT
+
 
 
 plan_no_plan(){
