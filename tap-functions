@@ -32,22 +32,22 @@ TEST:
   pass [NAME]
   fail [NAME]
 
-OTHER:
-  diag MSG
-
 SKIP:
   skip [CONDITION] [REASON] [NB_TESTS=1]
 
   skip $feature_not_present "feature not present" 2 || {
-      ok $a "a"
-      ok $b "b"
+      is $a "a"
+      is $b "b"
   }
 
 TODO:
   Specify TODO mode by setting $TODO:
     TODO="not implemented yet"
-    ok $result $expected "some not implemented test"
+    ok $result "some not implemented test"
     unset TODO
+
+OTHER:
+  diag MSG
 
 EXAMPLE:
   #!/bin/bash

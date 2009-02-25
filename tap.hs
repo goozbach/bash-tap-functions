@@ -201,7 +201,7 @@ _cleanup :: Int -> TAP Int
 _cleanup rc = do
     let s n = if (n > 1) then "s" else ""
     ts <- get
-	if (not $ planSet ts)
+    if (not $ planSet ts)
         then do
             diag "Looks like your test died before it could output anything."
             return rc
@@ -210,6 +210,7 @@ _cleanup rc = do
                 diag $ "Looks like your test died just after " ++ (show $ executedTests ts)
                 return rc
             else
+
                 if (( _skip_all == 0 && _no_plan != 0 )) ; then
 		_print_plan $_executed_tests
 	fi
@@ -264,127 +265,3 @@ main = runTests $ do
    unlike "abc" "a" Nothing
    skip 3 $ Just "rope"
    
-
-
-
-{-
-
-# This is the workhorse method that actually
-# prints the tests result.
-ok(){
-	local result=${1:?}
-	local name=${2:-''}
-
-	(( _plan_set == 0 )) && _die "You tried to run a test without a plan!  Gotta have a plan."
-
-	_executed_tests=$(( $_executed_tests + 1 ))
-
-	if [[ -n "$name" ]] ; then
-		if _matches "$name" "^[0-9]+$" ; then
-			diag "    You named your test '$name'.  You shouldn't use numbers for your test names."
-			diag "    Very confusing."
-		fi
-	fi
-
-	if (( result != 0 )) ; then
-		echo -n "not "
-		_failed_tests=$(( _failed_tests + 1 ))
-	fi
-	echo -n "ok $_executed_tests"
-
-	if [[ -n "$name" ]] ; then
-		local ename=${name//\#/\\#}
-		echo -n " - $ename"
-	fi
-
-	if [[ -n "$TODO" ]] ; then
-		echo -n " # TODO $TODO" ;
-		if (( result != 0 )) ; then
-			_failed_tests=$(( _failed_tests - 1 ))
-		fi
-	fi
-
-	echo
-	if (( result != 0 )) ; then
-		local file='tap-functions'
-		local func=
-		local line=
-
-		local i=0
-		local bt=$(caller $i)
-		while [[ "$bt" =~ "tap-functions$" ]] ; do
-			i=$(( $i + 1 ))
-			bt=$(caller $i)
-		done
-		local backtrace=
-		eval $(caller $i | (read line func file ; echo "backtrace=\"$file:$func() at line $line.\""))
-			
-		local t=
-		[[ -n "$TODO" ]] && t="(TODO) "
-
-		if [[ -n "$name" ]] ; then
-			diag "  Failed ${t}test '$name'"
-			diag "  in $backtrace"
-		else
-			diag "  Failed ${t}test in $backtrace"
-		fi
-	fi
-
-	return $result
-}
-
-
-_cleanup(){
-	local rc=0
-
-	if (( _plan_set == 0 )) ; then
-		diag "Looks like your test died before it could output anything."
-		return $rc
-	fi
-
-	if (( _test_died != 0 )) ; then
-		diag "Looks like your test died just after $_executed_tests."
-		return $rc
-	fi
-
-	if (( _skip_all == 0 && _no_plan != 0 )) ; then
-		_print_plan $_executed_tests
-	fi
-
-	local s=
-	if (( _no_plan == 0 && _expected_tests < _executed_tests )) ; then
-		s= ; (( _expected_tests > 1 )) && s=s
-		local extra=$(( _executed_tests - _expected_tests ))
-		diag "Looks like you planned $_expected_tests test$s but ran $extra extra."
-		rc=-1 ;
-	fi
-
-	if (( _no_plan == 0 && _expected_tests > _executed_tests )) ; then
-		s= ; (( _expected_tests > 1 )) && s=s
-		diag "Looks like you planned $_expected_tests test$s but only ran $_executed_tests."
-	fi
-
-	if (( _failed_tests > 0 )) ; then
-		s= ; (( _failed_tests > 1 )) && s=s
-		diag "Looks like you failed $_failed_tests test$s of $_executed_tests."
-	fi
-
-	return $rc
-}
-
-
-_exit(){
-	local rc=${1:-''}
-	if [[ -z "$rc" ]] ; then
-		_exit_status
-		rc=$?
-	fi
-
-	_cleanup
-	local alt_rc=$?
-	(( alt_rc != 0 )) && rc=$alt_rc
-	trap - EXIT
-	exit $rc
-}
-
--}
