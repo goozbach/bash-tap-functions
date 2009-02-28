@@ -1,4 +1,4 @@
-module TAP where
+module TAP (planTests) where
 
 import System.IO
 import System.Exit
@@ -14,7 +14,8 @@ data TapState = TapState {
   testDied :: Bool,
   expectedTests :: Int,
   executedTests :: Int,
-  failedTests :: Int
+  failedTests :: Int,
+  exitCode :: Int
 } deriving (Show)
 
 initState = TapState {
@@ -24,24 +25,20 @@ initState = TapState {
   testDied = False,
   expectedTests = 0,
   executedTests = 0,
-  failedTests = 0
+  failedTests = 0,
+  exitCode = 0 
 }
 
 type TAP a = StateT TapState IO a
 
 
-_checkPlanned :: TAP ()
-_checkPlanned = do
-    ts <- get
-    when (planSet ts) $ do
-        _die "You tried to plan twice!"
-
-
-_checkNotPlanned :: TAP ()
-_checkNotPlanned = do
-    ts <- get
-    when (not $ planSet ts) $ do
-        _die "You tried to run a test without a plan!  Gotta have a plan."
+planTests :: Int -> Maybe String -> TAP Int
+planTests n s = do 
+    _checkPlanned
+    when (n == 0) $ _die "You said to run 0 tests!  You've got to run something."
+    lift $ _printPlan n s 
+    modify (\x -> x {planSet = True, expectedTests = n})
+    return n
 
 
 planNoPlan :: TAP Int
@@ -62,33 +59,65 @@ planSkipAll s = do
     _exit $ Just 0
 
 
-planTests :: Int -> Maybe String -> TAP Int
-planTests n s = do 
-    _checkPlanned
-    when (n == 0) $ do
-        _die "You said to run 0 tests!  You've got to run something."
-    lift $ _printPlan n s 
-    modify (\x -> x {planSet = True, expectedTests = n})
-    return n
+_checkPlanned :: TAP ()
+_checkPlanned = do
+    ts <- get
+    when (planSet ts) $ _die "You tried to plan twice!"
+
+
+_checkNotPlanned :: TAP ()
+_checkNotPlanned = do
+    ts <- get
+    when (not $ planSet ts) $ _die "You tried to run a test without a plan!  Gotta have a plan."
 
 
 _printPlan :: Int -> Maybe String -> IO Int
 _printPlan n s = do
-    putStrLn $ "1.." ++ show n ++ 
+    putStrLn $ "1.." ++ show n ++
         case s of
-             Just s -> " # " ++ s
-             otherwise -> ""
+           Just s -> " # " ++ s
+           otherwise -> ""
     return n
 
 
+is :: (Show a, Eq a) => a -> a -> Maybe String -> TAP Bool
+is result expected msg = do
+    rc <- ok (result == expected) msg
+    when (not rc) $ do
+        diag $ "           got: '" ++ (show result) ++ "'"
+        diag $ "      expected: '" ++ (show expected) ++ "'"
+    return rc
+
+
+isnt :: (Show a, Eq a) => a -> a -> Maybe String -> TAP Bool
+isnt result expected msg = do
+    rc <- ok (result /= expected) msg
+    when (not rc) $ do
+        diag $ "           got: '" ++ (show result) ++ "'"
+        diag $ " didn't expect: '" ++ (show expected) ++ "'"
+    return rc
+
+
+like :: String -> String -> Maybe String -> TAP Bool
+like target pattern msg = do
+    rc <- ok (_matches target pattern) msg
+    when (not rc) $ diag $ "    '" ++ target ++ "' doesn't match '" ++ pattern ++ "'"
+    return rc
+
+
+unlike :: String -> String -> Maybe String -> TAP Bool
+unlike target pattern msg = do
+    rc <- ok (not $ _matches target pattern) msg
+    when (not rc) $ diag $ "    '" ++ target ++ "' matches '" ++ pattern ++ "'"
+    return rc
+
+
 pass :: Maybe String -> TAP Bool
-pass s = do
-    ok True s
+pass s = ok True s
 
 
 fail :: Maybe String -> TAP Bool
-fail s = do
-    ok False s
+fail s = ok False s
 
 
 ok :: Bool -> Maybe String -> TAP Bool
@@ -134,41 +163,7 @@ _is_diag result expected = do
     diag $ "    expected: '" ++ (show expected) ++ "'"
 
 
-is :: (Show a, Eq a) => a -> a -> Maybe String -> TAP Bool
-is result expected msg = do
-    rc <- ok (result == expected) msg
-    when (not rc) $ do
-        diag $ "           got: '" ++ (show result) ++ "'"
-        diag $ "      expected: '" ++ (show expected) ++ "'"
-    return rc
-
-
-isnt :: (Show a, Eq a) => a -> a -> Maybe String -> TAP Bool
-isnt result expected msg = do
-    rc <- ok (result /= expected) msg
-    when (not rc) $ do
-        diag $ "           got: '" ++ (show result) ++ "'"
-        diag $ " didn't expect: '" ++ (show expected) ++ "'"
-    return rc
-
-
-like :: String -> String -> Maybe String -> TAP Bool
-like target pattern msg = do
-    rc <- ok (_matches target pattern) msg
-    when (not rc) $ do
-       diag $ "    '" ++ target ++ "' doesn't match '" ++ pattern ++ "'"
-    return rc
-
-
-unlike :: String -> String -> Maybe String -> TAP Bool
-unlike target pattern msg = do
-    rc <- ok (not $ _matches target pattern) msg
-    when (not rc) $ do
-       diag $ "    '" ++ target ++ "' matches '" ++ pattern ++ "'"
-    return rc
-
-
-skip :: Int -> Maybe String -> TAP ()
+skip :: Int -> Maybe String -> TAP Int
 skip n reason = do
     let msg = case reason of Just s -> s
                              otherwise ->  ""
@@ -176,12 +171,21 @@ skip n reason = do
         modify (\x -> x {executedTests = executedTests x + 1})
         ts <- get
         lift . putStrLn $ "ok " ++ (show $ executedTests ts) ++ " # skip: " ++ msg)
-    return ()
+    return n
+
+
+skipUnless :: Bool -> Int -> Maybe String -> TAP a -> TAP Int
+skipUnless cond n reason tap = do
+    if cond
+        then do
+            tap
+            return 0
+        else do 
+            skip n reason
 
 
 diag :: String -> TAP ()
-diag s = do 
-    lift . putStrLn $ "# " ++ s
+diag s = lift . putStrLn $ "# " ++ s
 
 
 _die :: String -> TAP a
@@ -197,62 +201,54 @@ bailOut s = do
     _exit $ Just 255
 
 
-_cleanup :: Int -> TAP Int
-_cleanup rc = do
+_wrapup :: TAP ()
+_wrapup = do
+    ts <- get
     let s n = if (n > 1) then "s" else ""
-    ts <- get
-    if (not $ planSet ts)
-        then do
-            diag "Looks like your test died before it could output anything."
-            return rc
-        else if (testDied ts)
-            then do
-                diag $ "Looks like your test died just after " ++ (show $ executedTests ts)
-                return rc
-            else
+    let err | not $ planSet ts = diag "Looks like your test died before it could output anything." >> return True
+            | testDied ts      = diag ("Looks like your test died just after " ++ (show $ executedTests ts)) >> return True
+            | otherwise        = return False
+    stop <- err
+    if stop 
+        then return () 
+        else do
+            when ((not $ noPlan ts)&&((expectedTests ts) < (executedTests ts))) $ do
+                let extra = (executedTests ts) - (expectedTests ts)
+                diag $ "Looks like you planned " ++ (show $ expectedTests ts) ++ " test" ++ (s $ expectedTests ts)
+                    ++ " but ran " ++ (show extra) ++ " extra."
+                modify (\x -> x {exitCode = -1})
 
-                if (( _skip_all == 0 && _no_plan != 0 )) ; then
-		_print_plan $_executed_tests
-	fi
+            when ((not $ noPlan ts)&&((expectedTests ts) > (executedTests ts))) $ do
+                diag $ "Looks like you planned " ++ (show $ expectedTests ts) ++ " test" ++ (s $ expectedTests ts) 
+                    ++ " but only ran " ++ (show $ executedTests ts)
 
-	when (((not $ noPlan ts)&&((_expected_tests) < (_executed_tests)) $ do
-		local extra=$(( _executed_tests - _expected_tests ))
-		diag "Looks like you planned $_expected_tests test$s but ran $extra extra."
-		rc=-1 ;
-	fi
-
-	when ((not $ noPlan ts)&&((expectedTests ts) > (_executedTests ts))) $ do
-		diag $ "Looks like you planned " ++ (show $ expectedTests ts)) ++ " test" ++ (s $ expectedTests ts) 
-            ++ " but only ran " ++ (show $ executedTests ts)
-
-	when (failedTests ts > 0) $ do
-		diag $ "Looks like you failed " ++ (show $ failedTests ts)) ++ " test" ++ (s $ failedTests ts) 
-            ++ " of " ++ (show $ executedTests ts)
-
-	return rc
-
-
-_exitStatus :: TAP Int
-_exitStatus = do
-    ts <- get
-    if ((noPlan ts)||(not $ planSet ts)) 
-        then return $ failedTests ts
-        else if ((expectedTests ts) < (executedTests ts))
-            then return $ (executedTests ts) - (expectedTests ts)
-            else return $ ((failedTests ts) + ((expectedTests ts) - (executedTests ts)))
+            when (failedTests ts > 0) $ do
+                diag $ "Looks like you failed " ++ (show $ failedTests ts) ++ " test" ++ (s $ failedTests ts) 
+                    ++ " of " ++ (show $ executedTests ts)
 
 
 _exit :: Maybe Int -> TAP a
 _exit mrc = do
-    es <- _exitStatus
-    let rc = _cleanup $ case mrc of Just rc -> rc
-                                    otherwise -> es
-    lift . exitWith $ if (rc == 0) 
-                   then ExitSuccess
-                   else ExitFailure rc
- 
+    case mrc of
+        Just rc -> modify (\x -> x {exitCode = rc})
+        otherwise -> return ()
+    ts <- get
+    when (exitCode ts == 0) $ do
+        rc <- if ((noPlan ts)||(not $ planSet ts)) 
+                  then return $ failedTests ts
+                  else if ((expectedTests ts) < (executedTests ts))
+                      then return $ (executedTests ts) - (expectedTests ts)
+                      else return $ ((failedTests ts) + ((expectedTests ts) - (executedTests ts)))
+        modify (\x -> x {exitCode = rc})
+
+    _wrapup
+    ts <- get
+    let rc = exitCode ts
+    lift . exitWith $ if (rc == 0) then ExitSuccess else ExitFailure rc
+
 
 runTests :: TAP a -> IO (a, TapState)
+-- Add exception handling here?
 runTests s = runStateT (s >> _exit Nothing) initState
 
 
@@ -263,5 +259,9 @@ main = runTests $ do
    isnt "a" "a" $ Just "a == a"
    like "abc" "a" Nothing
    unlike "abc" "a" Nothing
-   skip 3 $ Just "rope"
+   skipUnless False 3 (Just "rope") $ do
+      ok True Nothing
+      ok True Nothing
+      ok True Nothing
+   ok True $ Just "Post Skip"
    
