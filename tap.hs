@@ -1,4 +1,10 @@
-module TAP (planTests) where
+module TAP (
+    planTests, planNoPlan, planSkipAll,
+    runTests, is, isnt, like, unlike, pass, fail, ok,
+    skip, skipUnless, toDo, 
+    diag, bailOut
+    ) where
+
 
 import System.IO
 import System.Exit
@@ -7,7 +13,7 @@ import Control.Exception
 import Text.Regex.Posix
 
 
-data TapState = TapState {
+data TAPState = TAPState {
   planSet :: Bool,
   noPlan :: Bool,
   skipAll :: Bool,
@@ -18,7 +24,7 @@ data TapState = TapState {
   exitCode :: Int
 } deriving (Show)
 
-initState = TapState {
+initState = TAPState {
   planSet = False,
   noPlan = False,
   skipAll = False,
@@ -29,12 +35,12 @@ initState = TapState {
   exitCode = 0 
 }
 
-type TAP a = StateT TapState IO a
+type TAP a = StateT TAPState IO a
 
 
 planTests :: Int -> Maybe String -> TAP Int
 planTests n s = do 
-    _checkPlanned
+    _assertNotPlanned
     when (n == 0) $ _die "You said to run 0 tests!  You've got to run something."
     lift $ _printPlan n s 
     modify (\x -> x {planSet = True, expectedTests = n})
@@ -43,14 +49,14 @@ planTests n s = do
 
 planNoPlan :: TAP Int
 planNoPlan = do 
-    _checkPlanned
+    _assertNotPlanned
     modify (\x -> x {planSet = True, noPlan = True})
     return 0
 
 
 planSkipAll :: Maybe String -> TAP Int
 planSkipAll s = do 
-    _checkPlanned
+    _assertNotPlanned
     lift . _printPlan 0 . Just $ "Skip " ++ 
         case s of
             Just s -> s
@@ -59,14 +65,14 @@ planSkipAll s = do
     _exit $ Just 0
 
 
-_checkPlanned :: TAP ()
-_checkPlanned = do
+_assertNotPlanned :: TAP ()
+_assertNotPlanned = do
     ts <- get
     when (planSet ts) $ _die "You tried to plan twice!"
 
 
-_checkNotPlanned :: TAP ()
-_checkNotPlanned = do
+_assertPlanned :: TAP ()
+_assertPlanned = do
     ts <- get
     when (not $ planSet ts) $ _die "You tried to run a test without a plan!  Gotta have a plan."
 
@@ -122,12 +128,13 @@ fail s = ok False s
 
 ok :: Bool -> Maybe String -> TAP Bool
 ok result msg = do
-    _checkNotPlanned
+    _assertPlanned
     modify (\x -> x {executedTests = executedTests x + 1})
 
     case msg of
         Just s -> when (_matches s "^[0-9]+$") $ do
-            diag $ "    You named your test '" ++ s ++ "'.  You shouldn't use numbers for your test names."
+            diag $ "    You named your test '" ++ s 
+                ++ "'.  You shouldn't use numbers for your test names."
             diag $ "    Very confusing."
         otherwise -> return ()
 
@@ -247,21 +254,6 @@ _exit mrc = do
     lift . exitWith $ if (rc == 0) then ExitSuccess else ExitFailure rc
 
 
-runTests :: TAP a -> IO (a, TapState)
+runTests :: TAP a -> IO (a, TAPState)
 -- Add exception handling here?
 runTests s = runStateT (s >> _exit Nothing) initState
-
-
-main = runTests $ do
-   planTests 8 Nothing
-   ok True $ Just "64"
-   is "a" "a" $ Just "a == a"
-   isnt "a" "a" $ Just "a == a"
-   like "abc" "a" Nothing
-   unlike "abc" "a" Nothing
-   skipUnless False 3 (Just "rope") $ do
-      ok True Nothing
-      ok True Nothing
-      ok True Nothing
-   ok True $ Just "Post Skip"
-   
