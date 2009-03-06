@@ -201,7 +201,7 @@ ok(){
 
 		local i=0
 		local bt=$(caller $i)
-		while [[ "$bt" =~ "tap-functions$" ]] ; do
+		while _matches "$bt" "tap-functions$" ; do
 			i=$(( $i + 1 ))
 			bt=$(caller $i)
 		done
@@ -255,7 +255,6 @@ _matches(){
 	if [[ -z "$result" || -z "$pattern" ]] ; then
 		return 1
 	else
-		echo $_bash_major_version
 		if (( _bash_major_version >= 3 )) ; then
 			[[ "$result" =~ "$pattern" ]]
 		else
