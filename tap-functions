@@ -1,7 +1,7 @@
 #!/bin/bash 
 
 
-_version='1.0'
+_version='1.01'
 	
 _plan_set=0
 _no_plan=0
@@ -247,16 +247,20 @@ _equals(){
 }
 
 
+ _bash_major_version=${BASH_VERSION%%.*}
 _matches(){
 	local result=${1:?}
 	local pattern=${2:?}
 
 	if [[ -z "$result" || -z "$pattern" ]] ; then
 		return 1
-	elif [[ "$result" =~ "$pattern" ]] ; then
-		return 0
-	else 
-		return 1
+	else
+		echo $_bash_major_version
+		if (( _bash_major_version >= 3 )) ; then
+			[[ "$result" =~ "$pattern" ]]
+		else
+			echo "$result" | egrep -q "$pattern"
+		fi
 	fi
 }
 
