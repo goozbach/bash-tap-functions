@@ -247,6 +247,8 @@ _equals(){
 }
 
 
+# Thanks to Aaron Kangas for the patch to allow regexp matching
+# under bash < 3.
  _bash_major_version=${BASH_VERSION%%.*}
 _matches(){
 	local result=${1:?}
