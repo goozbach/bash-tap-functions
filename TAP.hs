@@ -6,9 +6,10 @@ module TAP (
     ) where
 
 
+import Prelude hiding (fail)
 import System.IO
 import System.Exit
-import Control.Monad.State
+import Control.Monad.State hiding (fail)
 import Control.Exception
 import Text.Regex.Posix
 
@@ -21,6 +22,7 @@ data TAPState = TAPState {
   expectedTests :: Int,
   executedTests :: Int,
   failedTests :: Int,
+  toDoReason :: Maybe String,
   exitCode :: Int
 } deriving (Show)
 
@@ -32,29 +34,30 @@ initState = TAPState {
   expectedTests = 0,
   executedTests = 0,
   failedTests = 0,
+  toDoReason = Nothing,
   exitCode = 0 
 }
+
 
 type TAP a = StateT TAPState IO a
 
 
-planTests :: Int -> Maybe String -> TAP Int
+planTests :: Int -> Maybe String -> TAP ()
 planTests n s = do 
     _assertNotPlanned
-    when (n == 0) $ _die "You said to run 0 tests!  You've got to run something."
+    when (n == 0) $ _die $ "You said to run 0 tests!"
+        ++ " You've got to run something."
     lift $ _printPlan n s 
     modify (\x -> x {planSet = True, expectedTests = n})
-    return n
 
 
-planNoPlan :: TAP Int
+planNoPlan :: TAP ()
 planNoPlan = do 
     _assertNotPlanned
     modify (\x -> x {planSet = True, noPlan = True})
-    return 0
 
 
-planSkipAll :: Maybe String -> TAP Int
+planSkipAll :: Maybe String -> TAP ()
 planSkipAll s = do 
     _assertNotPlanned
     lift . _printPlan 0 . Just $ "Skip " ++ 
@@ -63,6 +66,7 @@ planSkipAll s = do
             otherwise -> ""
     modify (\x -> x {planSet = True, skipAll = True})
     _exit $ Just 0
+    return ()
 
 
 _assertNotPlanned :: TAP ()
@@ -74,16 +78,16 @@ _assertNotPlanned = do
 _assertPlanned :: TAP ()
 _assertPlanned = do
     ts <- get
-    when (not $ planSet ts) $ _die "You tried to run a test without a plan!  Gotta have a plan."
+    when (not $ planSet ts) $ _die $ "You tried to run a test without a plan!"
+        ++ "  Gotta have a plan."
 
 
-_printPlan :: Int -> Maybe String -> IO Int
+_printPlan :: Int -> Maybe String -> IO ()
 _printPlan n s = do
     putStrLn $ "1.." ++ show n ++
         case s of
            Just s -> " # " ++ s
            otherwise -> ""
-    return n
 
 
 is :: (Show a, Eq a) => a -> a -> Maybe String -> TAP Bool
@@ -107,14 +111,16 @@ isnt result expected msg = do
 like :: String -> String -> Maybe String -> TAP Bool
 like target pattern msg = do
     rc <- ok (_matches target pattern) msg
-    when (not rc) $ diag $ "    '" ++ target ++ "' doesn't match '" ++ pattern ++ "'"
+    when (not rc) $ diag $ "    '" ++ target ++ "' doesn't match '" 
+        ++ pattern ++ "'"
     return rc
 
 
 unlike :: String -> String -> Maybe String -> TAP Bool
 unlike target pattern msg = do
     rc <- ok (not $ _matches target pattern) msg
-    when (not rc) $ diag $ "    '" ++ target ++ "' matches '" ++ pattern ++ "'"
+    when (not rc) $ diag $ "    '" ++ target ++ "' matches '" 
+        ++ pattern ++ "'"
     return rc
 
 
@@ -146,14 +152,20 @@ ok result msg = do
     lift . putStr $ "ok " ++ (show $ executedTests ts)
 
     case msg of
+        -- TODO: Escape s
         Just s -> lift . putStr $ " - " ++ s
         otherwise -> return ()
-  
-    -- TODO
+
+    case (toDoReason ts) of
+        Just r -> lift . putStr $ " # TODO " ++ r
+        otherwise -> return ()
+
+    when (not result) $ do
+        modify (\x -> x {failedTests = failedTests x - 1})
  
     lift $ putStrLn ""
 
-    -- STACK TRACE
+    -- TODO: STACK TRACE?
 
     return result
 
@@ -164,38 +176,38 @@ _matches _ "" = False
 _matches target pattern = target =~ pattern :: Bool
 
 
-_is_diag :: (Show a) => a -> a -> TAP ()
-_is_diag result expected = do
-    diag $ "         got: '" ++ (show result) ++ "'"
-    diag $ "    expected: '" ++ (show expected) ++ "'"
-
-
-skip :: Int -> Maybe String -> TAP Int
+skip :: Int -> String -> TAP ()
 skip n reason = do
-    let msg = case reason of Just s -> s
-                             otherwise ->  ""
     forM_ [1 .. n] (\n' -> do
         modify (\x -> x {executedTests = executedTests x + 1})
         ts <- get
-        lift . putStrLn $ "ok " ++ (show $ executedTests ts) ++ " # skip: " ++ msg)
-    return n
+        lift . putStrLn $ "ok " ++ (show $ executedTests ts) 
+            ++ " # skip: " ++ reason)
+    return ()
 
 
-skipUnless :: Bool -> Int -> Maybe String -> TAP a -> TAP Int
+skipUnless :: Bool -> Int -> String -> TAP a -> TAP ()
 skipUnless cond n reason tap = do
     if cond
         then do
             tap
-            return 0
-        else do 
-            skip n reason
+            return ()
+        else skip n reason
+
+
+toDo :: String -> TAP Bool -> TAP ()
+toDo reason tap = do
+    modify (\x -> x {toDoReason = Just reason})
+    a <- tap
+    modify (\x -> x {toDoReason = Nothing})
+    return ()
 
 
 diag :: String -> TAP ()
-diag s = lift . putStrLn $ "# " ++ s
+diag s = do
+    lift . putStrLn $ "# " ++ s
 
 
-_die :: String -> TAP a
 _die s = do 
     lift $ hPutStrLn stderr s
     modify (\x -> x {testDied = True})
@@ -221,16 +233,19 @@ _wrapup = do
         else do
             when ((not $ noPlan ts)&&((expectedTests ts) < (executedTests ts))) $ do
                 let extra = (executedTests ts) - (expectedTests ts)
-                diag $ "Looks like you planned " ++ (show $ expectedTests ts) ++ " test" ++ (s $ expectedTests ts)
+                diag $ "Looks like you planned " ++ (show $ expectedTests ts) 
+                    ++ " test" ++ (s $ expectedTests ts)
                     ++ " but ran " ++ (show extra) ++ " extra."
                 modify (\x -> x {exitCode = -1})
 
             when ((not $ noPlan ts)&&((expectedTests ts) > (executedTests ts))) $ do
-                diag $ "Looks like you planned " ++ (show $ expectedTests ts) ++ " test" ++ (s $ expectedTests ts) 
+                diag $ "Looks like you planned " ++ (show $ expectedTests ts) 
+                    ++ " test" ++ (s $ expectedTests ts) 
                     ++ " but only ran " ++ (show $ executedTests ts)
 
             when (failedTests ts > 0) $ do
-                diag $ "Looks like you failed " ++ (show $ failedTests ts) ++ " test" ++ (s $ failedTests ts) 
+                diag $ "Looks like you failed " ++ (show $ failedTests ts) 
+                    ++ " test" ++ (s $ failedTests ts) 
                     ++ " of " ++ (show $ executedTests ts)
 
 
@@ -245,7 +260,8 @@ _exit mrc = do
                   then return $ failedTests ts
                   else if ((expectedTests ts) < (executedTests ts))
                       then return $ (executedTests ts) - (expectedTests ts)
-                      else return $ ((failedTests ts) + ((expectedTests ts) - (executedTests ts)))
+                      else return $ ((failedTests ts) 
+                          + ((expectedTests ts) - (executedTests ts)))
         modify (\x -> x {exitCode = rc})
 
     _wrapup
@@ -255,5 +271,5 @@ _exit mrc = do
 
 
 runTests :: TAP a -> IO (a, TAPState)
--- Add exception handling here?
+-- TODO: Add exception handling here?
 runTests s = runStateT (s >> _exit Nothing) initState
