@@ -1,7 +1,7 @@
 module TAP (
     planTests, planNoPlan, planSkipAll,
     runTests, is, isnt, like, unlike, pass, fail, ok,
-    skip, skipUnless, toDo, 
+    skip, skipIf, toDo, 
     diag, bailOut
     ) where
 
@@ -42,33 +42,6 @@ initState = TAPState {
 type TAP a = StateT TAPState IO a
 
 
-planTests :: Int -> Maybe String -> TAP ()
-planTests n s = do 
-    _assertNotPlanned
-    when (n == 0) $ _die $ "You said to run 0 tests!"
-        ++ " You've got to run something."
-    lift $ _printPlan n s 
-    modify (\x -> x {planSet = True, expectedTests = n})
-
-
-planNoPlan :: TAP ()
-planNoPlan = do 
-    _assertNotPlanned
-    modify (\x -> x {planSet = True, noPlan = True})
-
-
-planSkipAll :: Maybe String -> TAP ()
-planSkipAll s = do 
-    _assertNotPlanned
-    lift . _printPlan 0 . Just $ "Skip " ++ 
-        case s of
-            Just s -> s
-            otherwise -> ""
-    modify (\x -> x {planSet = True, skipAll = True})
-    _exit $ Just 0
-    return ()
-
-
 _assertNotPlanned :: TAP ()
 _assertNotPlanned = do
     ts <- get
@@ -83,11 +56,80 @@ _assertPlanned = do
 
 
 _printPlan :: Int -> Maybe String -> IO ()
-_printPlan n s = do
+_printPlan n plan = do
     putStrLn $ "1.." ++ show n ++
-        case s of
-           Just s -> " # " ++ s
+        case plan of
+           Just plan -> " # " ++ plan
            otherwise -> ""
+
+
+planTests :: Int -> TAP ()
+planTests n = do 
+    _assertNotPlanned
+    when (n == 0) $ _die $ "You said to run 0 tests!"
+        ++ " You've got to run something."
+    lift $ _printPlan n Nothing
+    modify (\x -> x {planSet = True, expectedTests = n})
+
+
+planNoPlan :: TAP ()
+planNoPlan = do 
+    _assertNotPlanned
+    modify (\x -> x {planSet = True, noPlan = True})
+
+
+planSkipAll :: String -> TAP ()
+planSkipAll plan = do 
+    _assertNotPlanned
+    lift . _printPlan 0 . Just $ "Skip " ++ plan
+    modify (\x -> x {planSet = True, skipAll = True})
+    _exit $ Just 0
+    return ()
+
+
+
+_matches :: String -> String -> Bool
+_matches "" _ = False
+_matches _ "" = False
+_matches target pattern = target =~ pattern :: Bool
+
+
+ok :: Bool -> Maybe String -> TAP Bool
+ok result msg = do
+    _assertPlanned
+    modify (\x -> x {executedTests = executedTests x + 1})
+
+    case msg of
+        Just s -> when (_matches s "^[0-9]+$") $ do
+            diag $ "    You named your test '" ++ s 
+                ++ "'.  You shouldn't use numbers for your test names."
+            diag $ "    Very confusing."
+        otherwise -> return ()
+
+    when (not result) $ do
+        lift $ putStr "not "
+        modify (\x -> x {failedTests = failedTests x + 1})
+
+    ts <- get
+    lift . putStr $ "ok " ++ (show $ executedTests ts)
+
+    case msg of
+        -- TODO: Escape s
+        Just s -> lift . putStr $ " - " ++ s
+        otherwise -> return ()
+
+    case (toDoReason ts) of
+        Just r -> lift . putStr $ " # TODO " ++ r
+        otherwise -> return ()
+
+    when (not result) $ do
+        modify (\x -> x {failedTests = failedTests x - 1})
+ 
+    lift $ putStrLn ""
+
+    -- TODO: STACK TRACE?
+
+    return result
 
 
 is :: (Show a, Eq a) => a -> a -> Maybe String -> TAP Bool
@@ -132,49 +174,6 @@ fail :: Maybe String -> TAP Bool
 fail s = ok False s
 
 
-ok :: Bool -> Maybe String -> TAP Bool
-ok result msg = do
-    _assertPlanned
-    modify (\x -> x {executedTests = executedTests x + 1})
-
-    case msg of
-        Just s -> when (_matches s "^[0-9]+$") $ do
-            diag $ "    You named your test '" ++ s 
-                ++ "'.  You shouldn't use numbers for your test names."
-            diag $ "    Very confusing."
-        otherwise -> return ()
-
-    when (not result) $ do
-        lift $ putStr "not "
-        modify (\x -> x {failedTests = failedTests x + 1})
-
-    ts <- get
-    lift . putStr $ "ok " ++ (show $ executedTests ts)
-
-    case msg of
-        -- TODO: Escape s
-        Just s -> lift . putStr $ " - " ++ s
-        otherwise -> return ()
-
-    case (toDoReason ts) of
-        Just r -> lift . putStr $ " # TODO " ++ r
-        otherwise -> return ()
-
-    when (not result) $ do
-        modify (\x -> x {failedTests = failedTests x - 1})
- 
-    lift $ putStrLn ""
-
-    -- TODO: STACK TRACE?
-
-    return result
-
-
-_matches :: String -> String -> Bool
-_matches "" _ = False
-_matches _ "" = False
-_matches target pattern = target =~ pattern :: Bool
-
 
 skip :: Int -> String -> TAP ()
 skip n reason = do
@@ -186,16 +185,16 @@ skip n reason = do
     return ()
 
 
-skipUnless :: Bool -> Int -> String -> TAP a -> TAP ()
-skipUnless cond n reason tap = do
+skipIf :: Bool -> Int -> String -> TAP a -> TAP ()
+skipIf cond n reason tap = do
     if cond
-        then do
+        then skip n reason
+        else do
             tap
             return ()
-        else skip n reason
 
 
-toDo :: String -> TAP Bool -> TAP ()
+toDo :: String -> TAP a -> TAP ()
 toDo reason tap = do
     modify (\x -> x {toDoReason = Just reason})
     a <- tap
@@ -208,15 +207,15 @@ diag s = do
     lift . putStrLn $ "# " ++ s
 
 
-_die s = do 
-    lift $ hPutStrLn stderr s
-    modify (\x -> x {testDied = True})
-    _exit $ Just 255
-
-
 bailOut :: String -> TAP a
 bailOut s = do
     lift $ hPutStrLn stderr s
+    _exit $ Just 255
+
+
+_die s = do 
+    lift $ hPutStrLn stderr s
+    modify (\x -> x {testDied = True})
     _exit $ Just 255
 
 
