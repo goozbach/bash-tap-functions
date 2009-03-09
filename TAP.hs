@@ -1,8 +1,8 @@
 module TAP (
     planTests, planNoPlan, planSkipAll,
-    runTests, is, isnt, like, unlike, pass, fail, ok,
+    is, isnt, like, unlike, pass, fail, ok,
     skip, skipIf, toDo, 
-    diag, bailOut
+    diag, bailOut, runTests
     ) where
 
 
