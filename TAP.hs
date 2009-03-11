@@ -1,3 +1,5 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module TAP (
     planTests, planNoPlan, planSkipAll,
     is, isnt, like, unlike, pass, fail, ok,
@@ -39,7 +41,9 @@ initState = TAPState {
 }
 
 
-type TAP a = StateT TAPState IO a
+newtype TAP a = TAP {
+        runTAP :: StateT TAPState IO a
+    } deriving (Monad, MonadIO, MonadState TAPState)
 
 
 _assertNotPlanned :: TAP ()
@@ -68,7 +72,7 @@ planTests n = do
     _assertNotPlanned
     when (n == 0) $ _die $ "You said to run 0 tests!"
         ++ " You've got to run something."
-    lift $ _printPlan n Nothing
+    liftIO $ _printPlan n Nothing
     modify (\x -> x {planSet = True, expectedTests = n})
 
 
@@ -81,7 +85,7 @@ planNoPlan = do
 planSkipAll :: String -> TAP ()
 planSkipAll plan = do 
     _assertNotPlanned
-    lift . _printPlan 0 . Just $ "Skip " ++ plan
+    liftIO . _printPlan 0 . Just $ "Skip " ++ plan
     modify (\x -> x {planSet = True, skipAll = True})
     _exit $ Just 0
     return ()
@@ -107,25 +111,25 @@ ok result msg = do
         otherwise -> return ()
 
     when (not result) $ do
-        lift $ putStr "not "
+        liftIO $ putStr "not "
         modify (\x -> x {failedTests = failedTests x + 1})
 
     ts <- get
-    lift . putStr $ "ok " ++ (show $ executedTests ts)
+    liftIO . putStr $ "ok " ++ (show $ executedTests ts)
 
     case msg of
         -- TODO: Escape s
-        Just s -> lift . putStr $ " - " ++ s
+        Just s -> liftIO . putStr $ " - " ++ s
         otherwise -> return ()
 
     case (toDoReason ts) of
-        Just r -> lift . putStr $ " # TODO " ++ r
+        Just r -> liftIO . putStr $ " # TODO " ++ r
         otherwise -> return ()
 
     when (not result) $ do
         modify (\x -> x {failedTests = failedTests x - 1})
  
-    lift $ putStrLn ""
+    liftIO $ putStrLn ""
 
     -- TODO: STACK TRACE?
 
@@ -180,7 +184,7 @@ skip n reason = do
     forM_ [1 .. n] (\n' -> do
         modify (\x -> x {executedTests = executedTests x + 1})
         ts <- get
-        lift . putStrLn $ "ok " ++ (show $ executedTests ts) 
+        liftIO . putStrLn $ "ok " ++ (show $ executedTests ts) 
             ++ " # skip: " ++ reason)
     return ()
 
@@ -204,17 +208,17 @@ toDo reason tap = do
 
 diag :: String -> TAP ()
 diag s = do
-    lift . putStrLn $ "# " ++ s
+    liftIO . putStrLn $ "# " ++ s
 
 
 bailOut :: String -> TAP a
 bailOut s = do
-    lift $ hPutStrLn stderr s
+    liftIO $ hPutStrLn stderr s
     _exit $ Just 255
 
 
 _die s = do 
-    lift $ hPutStrLn stderr s
+    liftIO $ hPutStrLn stderr s
     modify (\x -> x {testDied = True})
     _exit $ Just 255
 
@@ -266,9 +270,9 @@ _exit mrc = do
     _wrapup
     ts <- get
     let rc = exitCode ts
-    lift . exitWith $ if (rc == 0) then ExitSuccess else ExitFailure rc
+    liftIO . exitWith $ if (rc == 0) then ExitSuccess else ExitFailure rc
 
 
 runTests :: TAP a -> IO (a, TAPState)
 -- TODO: Add exception handling here?
-runTests s = runStateT (s >> _exit Nothing) initState
+runTests s = runStateT (runTAP (s >> _exit Nothing)) initState
