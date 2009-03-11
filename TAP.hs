@@ -217,6 +217,7 @@ bailOut s = do
     _exit $ Just 255
 
 
+_die :: String -> TAP a
 _die s = do 
     liftIO $ hPutStrLn stderr s
     modify (\x -> x {testDied = True})
