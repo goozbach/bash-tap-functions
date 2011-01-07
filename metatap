@@ -1,0 +1,82 @@
+#!/usr/bin/perl 
+
+use strict ;
+use Getopt::Long ;
+use TAP::Harness ;
+use Test::Builder ;
+
+my %METRICS = (
+	planned =>	{ 	desc => 'Expected number of planned tests', 
+					code => sub { $_[0]->planned() } 
+				},
+	passed 	=> 	{ 	desc => 'Expected number of passed tests', 
+					code => sub { $_[0]->passed() } 
+				},
+	failed	=>	{ 	desc => 'Expected number of failed tests',
+					code => sub { $_[0]->failed() } 
+				},
+	skipped	=>	{ 	desc => 'Expected number of skipped tests',
+					code => sub { $_[0]->skipped() } 
+				},
+	todo	=>	{ 	desc => 'Expected number of todo tests',
+					code => sub { $_[0]->todo() } 
+				},
+) ;
+my @METRICS = keys %METRICS ;
+
+sub usage(){
+	print STDERR <<USAGE;
+
+Usage: $0 OPTION...
+
+metatap is a simple testing tool for TAP producers. It reads TAP from standard input, 
+along with the expected results on the command line. It then produces 
+(and optionally runs) TAP describing how the input TAP was interpreted by TAP::Harness.
+
+Options:
+USAGE
+	print STDERR map { sprintf("  --%-10s Expected number of $_ tests\n", "$_:") } @METRICS ;
+	print STDERR "  --runtests:  Run the produced TAP though TAP::Harness\n" ;
+	exit 1 ;
+}
+
+
+my %opts = () ;
+GetOptions(\%opts,
+	"runtests",
+	map { "$_:1" } @METRICS,
+) or usage() ;
+usage() if -t \*STDIN ;
+
+my $harness = new TAP::Harness({verbosity => -3}) ;
+my $agg = $harness->runtests([\*STDIN, 'stdin']) ;
+
+my $tb = new Test::Builder() ;
+my $tap = '' ;
+$tb->output(\$tap) if $opts{runtests} ;
+$tb->plan(tests => scalar(@METRICS)) ;
+foreach my $m (@METRICS){
+	my $result = scalar($METRICS{$m}->{code}->($agg)) || 0 ;
+	my $expected = defined($opts{$m}) ? $opts{$m} : -1 ;
+	if ($expected >= 0){
+		$tb->is_eq($result, $expected, $METRICS{$m}->{desc}) ;
+	}
+	else {
+		$tb->skip("Expected number of $m tests not specified") ;
+	}
+}
+
+if (! $opts{runtests}){
+	# Just print out the TAP output
+	print $tap ;
+}
+else {
+	# Send it through the harness!
+	open(MEM, '<', \$tap) ;
+	TAP::Harness->new()->runtests([\*MEM, 'TAP']) ;
+	close(MEM) ;
+}
+
+
+1 ;
+
