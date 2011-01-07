@@ -9,8 +9,11 @@ my %METRICS = (
 	planned =>	{ 	desc => 'Expected number of planned tests', 
 					code => sub { $_[0]->planned() } 
 				},
-	passed 	=> 	{ 	desc => 'Expected number of passed tests', 
+	passed 	=> 	{ 	desc => 'Expected number of passed tests (including skip and toto tests)', 
 					code => sub { $_[0]->passed() } 
+				},
+	ok  	=> 	{ 	desc => 'Expected number of passed tests (excluding skip and toto tests)', 
+					code => sub { $_[0]->passed() - ($_[0]->skipped() + $_[0]->todo()) } 
 				},
 	failed	=>	{ 	desc => 'Expected number of failed tests',
 					code => sub { $_[0]->failed() } 
@@ -24,19 +27,28 @@ my %METRICS = (
 ) ;
 my @METRICS = keys %METRICS ;
 
-sub usage(){
+sub usage {
+	my $more = shift ;
 	print STDERR <<USAGE;
-
 Usage: $0 OPTION...
 
-metatap is a simple testing tool for TAP producers. It reads TAP from standard input, 
-along with the expected results on the command line. It then produces 
-(and optionally runs) TAP describing how the input TAP was interpreted by TAP::Harness.
+metatap is a simple testing tool for TAP producers. It reads TAP from standard 
+input, along with the expected results on the command line. It then produces 
+(and optionally runs) TAP describing how the input TAP was interpreted by 
+TAP::Harness.
 
-Options:
 USAGE
-	print STDERR map { sprintf("  --%-10s Expected number of $_ tests\n", "$_:") } @METRICS ;
-	print STDERR "  --runtests:  Run the produced TAP though TAP::Harness\n" ;
+	print STDERR 
+		(map { sprintf("  --%-10s $METRICS{$_}->{desc}\n", "$_:") } @METRICS),
+		"  --runtests:  Run the produced TAP though TAP::Harness\n" ;
+		"  --doc:       Print a usage example\n" ;
+	exit 1 unless $more ;
+}
+
+
+sub doc {
+	usage(1) ;
+	print STDERR <DATA> ;
 	exit 1 ;
 }
 
@@ -44,8 +56,10 @@ USAGE
 my %opts = () ;
 GetOptions(\%opts,
 	"runtests",
+	"doc",
 	map { "$_:1" } @METRICS,
 ) or usage() ;
+doc() if $opts{doc} ;
 usage() if -t \*STDIN ;
 
 my $harness = new TAP::Harness({verbosity => -3}) ;
@@ -56,13 +70,14 @@ my $tap = '' ;
 $tb->output(\$tap) if $opts{runtests} ;
 $tb->plan(tests => scalar(@METRICS)) ;
 foreach my $m (@METRICS){
-	my $result = scalar($METRICS{$m}->{code}->($agg)) || 0 ;
+	my $code = $METRICS{$m}->{code} || $agg->$m ;
+	my $result = scalar($code->($agg)) || 0 ;
 	my $expected = defined($opts{$m}) ? $opts{$m} : -1 ;
 	if ($expected >= 0){
-		$tb->is_eq($result, $expected, $METRICS{$m}->{desc}) ;
+		$tb->is_eq($result, $expected, "$METRICS{$m}->{desc} ($expected)") ;
 	}
 	else {
-		$tb->skip("Expected number of $m tests not specified") ;
+		$tb->skip("$METRICS{$m}->{desc} not specified") ;
 	}
 }
 
@@ -78,5 +93,40 @@ else {
 }
 
 
-1 ;
 
+__DATA__
+
+For example, if you send to following TAP:
+
+  1..5
+  ok 1 - 1 equals 1
+  ok 2 - 1 equals 1
+  ok 3 # skip because
+  not ok 4 - 1 equals 2
+  ok 5 - 1 == 2 # TODO because
+
+into
+
+  metatap --planned=5 --ok=2 --failed=1 --skip=1 --todo=0
+
+it will produce the following (TAP) output:
+
+  1..6
+  ok 1 - Expected number of passed tests (excluding skip and toto tests) (2)
+  ok 2 - Expected number of planned tests (5)
+  ok 3 # skip Expected number of passed tests (including skip and toto tests) not specified
+  ok 4 - Expected number of failed tests (1)
+  not ok 5 - Expected number of todo tests (0)
+  ok 6 - Expected number of skipped tests (1)
+
+adding the --runtests, the produced TAP will be run in a TAP::Harness, yielding:
+
+  TAP .. Failed 1/6 subtests 
+          (less 1 skipped subtest: 4 okay)
+
+  Test Summary Report
+  -------------------
+  TAP (Wstat: 0 Tests: 6 Failed: 1)
+    Failed test:  5
+  Files=1, Tests=6,  0 wallclock secs ( 0.00 usr +  0.00 sys =  0.00 CPU)
+  Result: FAIL
